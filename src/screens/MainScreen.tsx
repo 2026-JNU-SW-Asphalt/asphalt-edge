@@ -1,50 +1,123 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, AppState, AppStateStatus } from 'react-native';
 import { Camera, useCameraDevice } from 'react-native-vision-camera';
 import usePotholeStore from '../store/usePotholeStore';
 import { useLocationTracker } from '../hooks/useLocationTracker';
-import { requestHardwarePermissions } from '../utils/permission';
+import { requestHardwarePermissions, openAppSettings, checkPermissionStatus } from '../utils/permission';
 
 /**
  * @component MainScreen
- * @description 카메라 프리뷰와 실시간 위치 정보를 표시하는 관제 메인 화면
+ * @description 광주형 AI 포트홀 관제 플랫폼의 메인 화면. 
+ * 카메라 프리뷰, 실시간 GPS 정보, 권한 예외 처리를 담당합니다.
  */
 const MainScreen = () => {
-  const device = useCameraDevice('back'); // 후면 카메라 사용 [cite: 29]
+  // 1. 하드웨어 상태 및 데이터 관리
+  const device = useCameraDevice('back');
   const { isTracking, setIsTracking, currentLocation } = usePotholeStore();
-  const [hasPermission, setHasPermission] = useState(false);
+  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  
+  // AppState 상태 추적을 위한 ref
+  const appState = useRef(AppState.currentState);
 
-  // GPS 추적 시작
+  // 2. 실시간 GPS 추적 훅 실행 (1Hz 갱신)
   useLocationTracker();
 
+  /**
+   * @function checkOnlyStatus
+   * @description 앱이 활성화될 때 조용히 권한 상태만 업데이트합니다. (Alert 없음)
+   */
+  const checkOnlyStatus = async () => {
+    const result = await checkPermissionStatus();
+    setHasPermission(result);
+  };
+
+  /**
+   * @function initialPermissionRequest
+   * @description 앱 최초 실행 시 또는 사용자가 버튼 클릭 시에만 전체 권한 요청(Alert 포함 가능)을 수행합니다.
+   */
+  const initialPermissionRequest = async () => {
+    const result = await requestHardwarePermissions();
+    setHasPermission(result);
+  };
+
   useEffect(() => {
-    requestHardwarePermissions().then(setHasPermission);
+    // 1. 최초 실행 시에만 권한 요청 시도
+    initialPermissionRequest();
+
+    const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+      if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+        // 2. 설정에서 돌아올 때는 '조용한 체크'만 수행하여 무한 루프 방지
+        checkOnlyStatus();
+      }
+      appState.current = nextAppState;
+    });
+
+    return () => subscription.remove();
   }, []);
 
-  if (!hasPermission || !device) return <View style={styles.container}><Text>권한 요청 중...</Text></View>;
+  /**
+   * @description 권한 요청 중일 때 표시할 로딩 화면
+   */
+  if (hasPermission === null) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator size="large" color="#4d79ff" />
+        <Text style={styles.loadingText}>시스템 권한 확인 중...</Text>
+      </View>
+    );
+  }
+
+  /**
+   * @description 권한 거절 시 표시할 예외 처리 화면 (설정 유도)
+   */
+  if (hasPermission === false) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.errorIcon}>🚫</Text>
+        <Text style={styles.errorText}>권한이 필요합니다</Text>
+        <Text style={styles.subText}>
+          정확한 포트홀 위치 기록을 위해{"\n"}카메라와 위치 권한이 필수입니다.
+        </Text>
+        <TouchableOpacity style={styles.settingsButton} onPress={openAppSettings}>
+          <Text style={styles.buttonText}>설정에서 허용하기</Text>
+        </TouchableOpacity>
+        {/* 사용자가 설정을 바꾸고 돌아오면 AppState 리스너가 이 화면을 자동으로 갱신합니다. */}
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
-      {/* 1. 카메라 프리뷰 레이어 [cite: 172] */}
-      <Camera
-        style={StyleSheet.absoluteFill}
-        device={device}
-        isActive={true}
-      />
+      {/* 카메라 프리뷰 레이어 */}
+      {device && (
+        <Camera
+          style={StyleSheet.absoluteFill}
+          device={device}
+          isActive={true}
+          format={device.formats[0]}
+        />
+      )}
 
-      {/* 2. 디버그 오버레이 (상단) [cite: 248, 252] */}
+      {/* 실시간 디버그 오버레이 (상단) */}
       <View style={styles.debugOverlay}>
-        <Text style={styles.debugText}>📍 Lat: {currentLocation.lat.toFixed(6)}</Text>
-        <Text style={styles.debugText}>📍 Lng: {currentLocation.lng.toFixed(6)}</Text>
-        <Text style={styles.statusText}>상태: {isTracking ? '🛰️ 탐지 및 전송 중' : '💤 대기 중'}</Text>
+        <Text style={styles.debugTitle}>GWANGJU AI CONTROL</Text>
+        <View style={styles.divider} />
+        <Text style={styles.debugLabel}>LAT: <Text style={styles.debugValue}>{currentLocation.lat.toFixed(6)}</Text></Text>
+        <Text style={styles.debugLabel}>LNG: <Text style={styles.debugValue}>{currentLocation.lng.toFixed(6)}</Text></Text>
+        <Text style={[styles.statusText, { color: isTracking ? '#00ff00' : '#ffcc00' }]}>
+          STATUS: {isTracking ? 'RUNNING' : 'IDLE'}
+        </Text>
       </View>
 
-      {/* 3. 제어 버튼 (하단) [cite: 143] */}
+      {/* 탐지 제어 버튼 (하단) */}
       <TouchableOpacity 
-        style={[styles.button, { backgroundColor: isTracking ? '#ff4d4d' : '#4d79ff' }]}
+        activeOpacity={0.8}
+        style={[styles.mainButton, { backgroundColor: isTracking ? '#ff4d4d' : '#4d79ff' }]}
         onPress={() => setIsTracking(!isTracking)}
       >
-        <Text style={styles.buttonText}>{isTracking ? '탐지 종료' : '탐지 시작'}</Text>
+        <Text style={styles.mainButtonText}>
+          {isTracking ? '탐지 종료' : '탐지 시작'}
+        </Text>
       </TouchableOpacity>
     </View>
   );
@@ -52,11 +125,48 @@ const MainScreen = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
-  debugOverlay: { position: 'absolute', top: 50, left: 20, backgroundColor: 'rgba(0,0,0,0.6)', padding: 10, borderRadius: 8 },
-  debugText: { color: '#fff', fontSize: 14, fontWeight: 'bold' },
-  statusText: { color: '#00ff00', fontSize: 16, marginTop: 5 },
-  button: { position: 'absolute', bottom: 50, alignSelf: 'center', paddingVertical: 15, paddingHorizontal: 40, borderRadius: 30 },
-  buttonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' }
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1a1a1a', padding: 20 },
+  
+  // 권한 예외 UI
+  errorIcon: { fontSize: 50, marginBottom: 20 },
+  errorText: { color: '#fff', fontSize: 22, fontWeight: 'bold', marginBottom: 10 },
+  subText: { color: '#aaa', textAlign: 'center', lineHeight: 22, marginBottom: 30 },
+  loadingText: { color: '#fff', marginTop: 15 },
+  settingsButton: { backgroundColor: '#4d79ff', paddingVertical: 15, paddingHorizontal: 30, borderRadius: 10 },
+  
+  // 관제 오버레이 UI
+  debugOverlay: { 
+    position: 'absolute', 
+    top: 60, 
+    left: 20, 
+    backgroundColor: 'rgba(0,0,0,0.7)', 
+    padding: 15, 
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)'
+  },
+  debugTitle: { color: '#4d79ff', fontSize: 12, fontWeight: 'bold', letterSpacing: 1 },
+  divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.2)', marginVertical: 8 },
+  debugLabel: { color: '#fff', fontSize: 13, marginBottom: 4 },
+  debugValue: { color: '#00ffff', fontWeight: '500' },
+  statusText: { fontSize: 15, fontWeight: 'bold', marginTop: 5 },
+
+  // 메인 버튼 UI
+  mainButton: { 
+    position: 'absolute', 
+    bottom: 50, 
+    alignSelf: 'center', 
+    paddingVertical: 18, 
+    paddingHorizontal: 50, 
+    borderRadius: 35,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4.65
+  },
+  mainButtonText: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
+  buttonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' }
 });
 
 export default MainScreen;
