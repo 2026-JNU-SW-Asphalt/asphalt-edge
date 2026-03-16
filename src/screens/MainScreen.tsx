@@ -12,11 +12,6 @@ import { requestHardwarePermissions, openAppSettings, checkPermissionStatus } fr
  * [Phase 2 적용] 초광각 렌즈 선정, 가로 모드 촬영, 샘플링 엔진이 통합된 버전입니다.
  */
 const MainScreen = () => {
-  /**
-   * 1. 카메라 디바이스 설정 (Step 5-1)
-   * - physicalDevices: 기종에 따라 초광각(ultra-wide)을 우선 탐색하며, 없을 경우 일반 광각을 선택합니다.
-   * - S21(0.5x), S21 Ultra(0.6x) 등 초광각 렌즈 활용을 통해 본인 차선 및 인접 차선까지 시야각을 확보합니다.
-   */
   const device = useCameraDevice('back', {
     physicalDevices: ['ultra-wide-angle-camera', 'wide-angle-camera']
   });
@@ -26,31 +21,24 @@ const MainScreen = () => {
     { videoResolution: 'max' }
   ]);
   
-  // Phase 2: 프레임 샘플링 엔진 (3~5 FPS 추출 로직 포함)
-  const { frameProcessor } = useCameraEngine();
+  // [메트로놈 아키텍처 반영 1] 카메라 제어를 위한 ref 생성
+  const cameraRef = useRef<Camera>(null);
+
+  // [메트로놈 아키텍처 반영 2] 생성한 cameraRef를 엔진(Hook)으로 전달
+  const { frameProcessor } = useCameraEngine(cameraRef);
   
   const { isTracking, setIsTracking, currentLocation } = usePotholeStore();
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   
-  // AppState 상태 추적을 위한 ref
   const appState = useRef(AppState.currentState);
 
-  // 2. 실시간 GPS 추적 훅 실행 (1Hz 갱신)
   useLocationTracker();
 
-  /**
-   * @function checkOnlyStatus
-   * @description 앱이 활성화될 때 조용히 권한 상태만 업데이트합니다.
-   */
   const checkOnlyStatus = async () => {
     const result = await checkPermissionStatus();
     setHasPermission(result);
   };
 
-  /**
-   * @function initialPermissionRequest
-   * @description 앱 최초 실행 시 전체 권한 요청을 수행합니다.
-   */
   const initialPermissionRequest = async () => {
     const result = await requestHardwarePermissions();
     setHasPermission(result);
@@ -69,9 +57,6 @@ const MainScreen = () => {
     return () => subscription.remove();
   }, []);
 
-  /**
-   * @description 권한 요청 중일 때 표시할 로딩 화면
-   */
   if (hasPermission === null) {
     return (
       <View style={styles.centered}>
@@ -98,17 +83,13 @@ const MainScreen = () => {
 
   return (
     <View style={styles.container}>
-      {/* [Phase 2 핵심 변경사항 - Step 5-1]
-        - orientation: 기획에 따라 기기 상단을 왼쪽으로 90도 회전한 가로 모드(landscape-left)로 고정합니다.
-        - pixelFormat: 하드웨어 가속에 최적화된 'yuv' 포맷을 사용하여 CPU 부하를 낮춥니다.
-        - videoStabilizationMode: 진동 방지 가이드에 따라 소프트웨어 손떨방 대신 물리적 거치를 우선하며, 
-          불필요한 연산을 줄이기 위해 'off'로 설정합니다.
-      */}
       {device && (
         <Camera
+          ref={cameraRef} // [메트로놈 아키텍처 반영 3] ref 연결
           style={StyleSheet.absoluteFill}
           device={device}
           isActive={true}
+          photo={true} // [메트로놈 아키텍처 반영 3] takePhoto 호출을 위해 반드시 true로 설정
           frameProcessor={isTracking ? frameProcessor : undefined}
           pixelFormat="yuv"
           videoStabilizationMode="off"
@@ -121,8 +102,8 @@ const MainScreen = () => {
       <View style={styles.debugOverlay}>
         <Text style={styles.debugTitle}>GWANGJU AI CONTROL</Text>
         <View style={styles.divider} />
-        <Text style={styles.debugLabel}>LAT: <Text style={styles.debugValue}>{currentLocation.lat.toFixed(6)}</Text></Text>
-        <Text style={styles.debugLabel}>LNG: <Text style={styles.debugValue}>{currentLocation.lng.toFixed(6)}</Text></Text>
+        <Text style={styles.debugLabel}>LAT: <Text style={styles.debugValue}>{currentLocation?.lat?.toFixed(6) || '0.000000'}</Text></Text>
+        <Text style={styles.debugLabel}>LNG: <Text style={styles.debugValue}>{currentLocation?.lng?.toFixed(6) || '0.000000'}</Text></Text>
         <Text style={[styles.statusText, { color: isTracking ? '#00ff00' : '#ffcc00' }]}>
           STATUS: {isTracking ? 'RUNNING' : 'IDLE'}
         </Text>
