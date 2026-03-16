@@ -1,21 +1,15 @@
-import { useCallback } from 'react';
 import { useFrameProcessor } from 'react-native-vision-camera';
 import { useRunOnJS, useSharedValue } from 'react-native-worklets-core';
 import { shouldProcessFrame } from '../utils/frameSampler';
+import { getCropConfig } from '../utils/imageProcessor';
 
-/**
- * @function useCameraEngine
- * @description 카메라 프레임을 샘플링하여 처리하는 핵심 엔진 훅
- */
 export const useCameraEngine = () => {
-  // useRef → useSharedValue로 교체 (worklet 내부에서 접근 가능)
   const lastTimestamp = useSharedValue<number>(0);
 
-  const processFrameOnJS = useCallback((timestamp: number) => {
-    console.log(`📸 프레임 캡처 성공: ${timestamp}`);
-  }, []);
+  const processFrameOnJS = (timestamp: number) => {
+    console.log(`📸 전처리 및 전송 준비: ${timestamp}`);
+  };
 
-  // runOnJS → useRunOnJS로 교체
   const runProcessFrame = useRunOnJS(processFrameOnJS, [processFrameOnJS]);
 
   const frameProcessor = useFrameProcessor((frame) => {
@@ -24,7 +18,8 @@ export const useCameraEngine = () => {
 
     if (shouldProcessFrame(now, lastTimestamp.value)) {
       lastTimestamp.value = now;
-      runProcessFrame(now);
+      const crop = getCropConfig(frame.width, frame.height); 
+      runProcessFrame(now); 
     }
   }, [lastTimestamp, runProcessFrame]);
 
