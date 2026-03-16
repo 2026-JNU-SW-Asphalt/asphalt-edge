@@ -3,6 +3,7 @@ import { useFrameProcessor } from 'react-native-vision-camera'; // CameraFile �
 import { useRunOnJS, useSharedValue } from 'react-native-worklets-core';
 import { shouldProcessFrame } from '../utils/frameSampler';
 import { getCropConfig, processAndEncodeImage } from '../utils/imageProcessor';
+import { saveImageToDownloads } from '../utils/debugStorage'; // 디버그 유틸 추가
 
 // 컴포넌트(MainScreen)에서 전달받을 Camera Ref의 타입 (임시 지정)
 type CameraRefType = any; 
@@ -32,7 +33,10 @@ export const useCameraEngine = (cameraRef: CameraRefType) => {
       
       console.log(`✅ [${timestamp}] 전처리 완료: 640x640 JPEG -> ${finalImageUri}`);
       
-      // [TODO] 6주차: 여기서 FormData를 만들고 Axios 전송 큐에 넣게 됩니다.
+      // -----------------------------------------------------
+      // 📸 [디버그용] 안드로이드 Download 폴더로 복사 실행
+      await saveImageToDownloads(finalImageUri, timestamp);
+      // -----------------------------------------------------
 
     } catch (e) {
       console.log('이미지 변환 에러 건너뜀 (Fail-Fast)', e);
