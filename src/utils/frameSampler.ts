@@ -6,6 +6,7 @@
  * @returns {boolean} 처리 대상 여부
  */
 export const shouldProcessFrame = (now: number, lastProcessedTime: number): boolean => {
+  'worklet'
   const INTERVAL = 333; // 약 3 FPS 기준 (333ms)
   return now - lastProcessedTime >= INTERVAL;
 };
