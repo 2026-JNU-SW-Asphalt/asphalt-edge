@@ -13,12 +13,17 @@ export const createPotholeFormData = (metadata: PotholePacket, imageFile: any): 
   // 메타데이터를 'header' 키에 JSON 문자열로 추가
   formData.append('header', JSON.stringify(metadata));
 
-  // 이미지 바이너리를 'frame' 키에 추가
-  formData.append('frame', {
-    uri: imageFile.uri,
-    type: 'image/jpeg',
-    name: 'pothole.jpg',
-  } as any);
+  // 이미지 파일이 존재할 때만 'frame' 키에 추가 (방어적 코드)
+  if (imageFile && imageFile.uri) {
+    formData.append('frame', {
+      uri: imageFile.uri,
+      type: 'image/jpeg',
+      name: 'pothole.jpg',
+    } as any);
+    console.log('✅ FormData에 이미지가 포함되었습니다.');
+  } else {
+    console.log('⚠️ 이미지 없이 메타데이터만 FormData에 포함되었습니다.');
+  }
 
   return formData;
 };

@@ -1,0 +1,31 @@
+### 환경 변수 설정
+# @baseUrl = http://localhost:8000
+@baseUrl = http://10.0.2.2:8000
+@contentType = multipart/form-data
+
+### 1. 포트홀 프레임 전송 테스트 (성공 시나리오)
+# @name uploadFrame
+POST {{baseUrl}}/api/v1/stream/frames
+Content-Type: {{contentType}}; boundary=pothole-boundary
+
+--pothole-boundary
+Content-Disposition: form-data; name="header"
+Content-Type: application/json
+
+{
+  "location": {
+    "lat": 35.1595,
+    "lng": 126.8526
+  },
+  "captured_at": "2026-03-16T19:40:00Z"
+}
+
+--pothole-boundary
+Content-Disposition: form-data; name="frame"; filename="test_sample_640.jpg"
+Content-Type: image/jpeg
+
+< ./test_sample_640.jpg
+--pothole-boundary--
+
+### 2. 서버 상태 확인 (Health Check)
+GET {{baseUrl}}/health

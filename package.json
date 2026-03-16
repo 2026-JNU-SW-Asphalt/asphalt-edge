@@ -4,6 +4,9 @@
   "private": true,
   "scripts": {
     "android": "react-native run-android",
+    "android:clean": "cd android && gradlew.bat clean && cd .. && npx react-native run-android",    "mock": "python ./src/tests/mock_server.py",
+    "mock": "python ./src/tests/mock_server.py",
+
     "ios": "react-native run-ios",
     "lint": "eslint .",
     "start": "react-native start",
