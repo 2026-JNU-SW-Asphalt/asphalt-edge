@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, AppState, AppStateStatus } from 'react-native';
-import { Camera, useCameraDevice } from 'react-native-vision-camera';
+import { useCameraDevice, useCameraFormat, Camera } from 'react-native-vision-camera';
 import usePotholeStore from '../store/usePotholeStore';
 import { useLocationTracker } from '../hooks/useLocationTracker';
 import { useCameraEngine } from '../hooks/useCameraEngine';
@@ -9,11 +9,22 @@ import { requestHardwarePermissions, openAppSettings, checkPermissionStatus } fr
 /**
  * @component MainScreen
  * @description 광주형 AI 포트홀 관제 플랫폼의 메인 화면. 
- * 카메라 프리뷰, 실시간 GPS 정보, 그리고 Phase 2의 핵심인 프레임 샘플링 엔진을 통합합니다.
+ * [Phase 2 적용] 초광각 렌즈 선정, 가로 모드 촬영, 샘플링 엔진이 통합된 버전입니다.
  */
 const MainScreen = () => {
-  // 1. 하드웨어 상태 및 데이터 관리
-  const device = useCameraDevice('back');
+  /**
+   * 1. 카메라 디바이스 설정 (Step 5-1)
+   * - physicalDevices: 기종에 따라 초광각(ultra-wide)을 우선 탐색하며, 없을 경우 일반 광각을 선택합니다.
+   * - S21(0.5x), S21 Ultra(0.6x) 등 초광각 렌즈 활용을 통해 본인 차선 및 인접 차선까지 시야각을 확보합니다.
+   */
+  const device = useCameraDevice('back', {
+    physicalDevices: ['ultra-wide-angle-camera', 'wide-angle-camera']
+  });
+  
+  const cameraFormat = useCameraFormat(device, [
+    { videoAspectRatio: 16 / 9 },
+    { videoResolution: 'max' }
+  ]);
   
   // Phase 2: 프레임 샘플링 엔진 (3~5 FPS 추출 로직 포함)
   const { frameProcessor } = useCameraEngine();
@@ -70,9 +81,6 @@ const MainScreen = () => {
     );
   }
 
-  /**
-   * @description 권한 거절 시 표시할 예외 처리 화면
-   */
   if (hasPermission === false) {
     return (
       <View style={styles.centered}>
@@ -90,10 +98,11 @@ const MainScreen = () => {
 
   return (
     <View style={styles.container}>
-      {/* [Phase 2 핵심 변경사항]
-        - frameProcessor: isTracking 상태일 때만 샘플링 엔진 가동
-        - pixelFormat: Android 환경에서 하드웨어 가속에 가장 효율적인 'yuv' 포맷 사용
-        - videoStabilizationMode: 주행 중 진동에 의한 초점 흔들림 방지를 위해 'off' (광학 고정 보조)
+      {/* [Phase 2 핵심 변경사항 - Step 5-1]
+        - orientation: 기획에 따라 기기 상단을 왼쪽으로 90도 회전한 가로 모드(landscape-left)로 고정합니다.
+        - pixelFormat: 하드웨어 가속에 최적화된 'yuv' 포맷을 사용하여 CPU 부하를 낮춥니다.
+        - videoStabilizationMode: 진동 방지 가이드에 따라 소프트웨어 손떨방 대신 물리적 거치를 우선하며, 
+          불필요한 연산을 줄이기 위해 'off'로 설정합니다.
       */}
       {device && (
         <Camera
@@ -104,6 +113,7 @@ const MainScreen = () => {
           pixelFormat="yuv"
           videoStabilizationMode="off"
           enableLocation={true}
+          format={cameraFormat}
         />
       )}
 
@@ -132,7 +142,6 @@ const MainScreen = () => {
   );
 };
 
-// 스타일 시트는 기존 규격 유지
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1a1a1a', padding: 20 },
