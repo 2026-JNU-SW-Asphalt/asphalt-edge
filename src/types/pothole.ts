@@ -19,3 +19,23 @@ export interface PotholePacket {
   location: LocationData;
   captured_at: string;
 }
+
+/**
+ * @typedef {Object} PotholeState
+ * @description 앱의 전역 상태 인터페이스
+ * @property {boolean} isTracking - 현재 포트홀 탐지 및 전송 중인지 여부
+ * @property {LocationData} currentLocation - 실시간 GPS 위치 정보
+ */
+export interface PotholeState {
+  isTracking: boolean;
+  currentLocation: LocationData;
+}
+
+/**
+ * @typedef {Object} PotholeActions
+ * @description 상태를 변경하는 함수들의 인터페이스
+ */
+export interface PotholeActions {
+  setIsTracking: (val: boolean) => void;
+  setCurrentLocation: (loc: LocationData) => void;
+}
