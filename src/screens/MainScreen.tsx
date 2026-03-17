@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, Animated,
-  ActivityIndicator, AppState, AppStateStatus,
+  ActivityIndicator, AppState, AppStateStatus, Dimensions,
 } from 'react-native';
 import Orientation from 'react-native-orientation-locker';
 import { useCameraDevices, useCameraFormat, Camera } from 'react-native-vision-camera';
@@ -11,6 +11,8 @@ import { useCameraEngine } from '../hooks/useCameraEngine';
 import { requestHardwarePermissions, openAppSettings, checkPermissionStatus } from '../utils/permission';
 import { styles, SHAPE } from './MainScreen.styles';
 
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('screen');
+
 const MainScreen = () => {
   const devices = useCameraDevices();
   const device =
@@ -18,22 +20,36 @@ const MainScreen = () => {
     devices.find(d => d.position === 'back');
 
   const cameraFormat = useCameraFormat(device, [
+    { videoResolution: { width: SCREEN_H, height: SCREEN_W } },
     { photoAspectRatio: 16 / 9 },
     { videoAspectRatio: 16 / 9 },
-    { photoResolution: 'max'   },
-    { videoResolution: 'max'   },
+    { photoResolution: 'max' },
   ]);
 
   const cameraRef = useRef<Camera>(null);
-  const { frameProcessor } = useCameraEngine(cameraRef);
+  const { startSampling } = useCameraEngine(cameraRef);
   const { isTracking, setIsTracking, currentLocation } = usePotholeStore();
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const appState = useRef(AppState.currentState);
 
+  // zoom: device 확정 시점에 minZoom으로 명시적 동기화
+  const [zoom, setZoom] = useState<number>(1);
+  useEffect(() => {
+    if (device?.minZoom !== undefined) {
+      setZoom(device.minZoom);
+    }
+  }, [device?.minZoom]);
+
   useLocationTracker();
 
-  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!isTracking) return;
+    const stop = startSampling();
+    return stop;
+  }, [isTracking, startSampling]);
 
+  // 탐지 버튼 모핑 애니메이션
+  const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.spring(anim, {
       toValue: isTracking ? 1 : 0,
@@ -104,13 +120,15 @@ const MainScreen = () => {
             device={device}
             isActive={true}
             photo={true}
-            frameProcessor={isTracking ? frameProcessor : undefined}
-            pixelFormat="yuv"
+            // frameProcessor 완전 제거
+            // → 카메라 세션 전환 없음 → 녹화 전/후 프리뷰 화질 동일
+            pixelFormat="rgb"
             videoStabilizationMode="off"
             enableLocation={true}
             format={cameraFormat}
-            zoom={device.minZoom}
+            zoom={zoom}
             enableZoomGesture={true}
+            resizeMode="cover"
           />
         )}
       </View>
