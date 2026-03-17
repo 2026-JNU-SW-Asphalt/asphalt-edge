@@ -1,12 +1,14 @@
 /**
+ * 샘플링 간격: 333ms = 약 3 FPS
+ * useCameraEngine 등 외부에서 참조할 수 있도록 export합니다.
+ */
+export const SAMPLE_INTERVAL_MS = 333;
+
+/**
  * @function shouldProcessFrame
- * @description 현재 타임스탬프를 기반으로 프레임 처리 여부를 결정합니다. (3~5 FPS)
- * @param {number} now - 현재 시간 (ms)
- * @param {number} lastProcessedTime - 마지막으로 처리된 시간 (ms)
- * @returns {boolean} 처리 대상 여부
+ * @description 마지막 처리 시각으로부터 SAMPLE_INTERVAL_MS 이상 경과했는지 확인합니다.
  */
 export const shouldProcessFrame = (now: number, lastProcessedTime: number): boolean => {
-  'worklet'
-  const INTERVAL = 333; // 약 3 FPS 기준 (333ms)
-  return now - lastProcessedTime >= INTERVAL;
+  'worklet';
+  return now - lastProcessedTime >= SAMPLE_INTERVAL_MS;
 };

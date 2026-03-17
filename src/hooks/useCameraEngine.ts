@@ -1,8 +1,8 @@
 import { useCallback } from 'react';
 import { useFrameProcessor } from 'react-native-vision-camera';
 import { useRunOnJS, useSharedValue } from 'react-native-worklets-core';
-import { shouldProcessFrame } from '../utils/frameSampler';
-import { processAndEncodeImage } from '../utils/imageProcessor';
+import { shouldProcessFrame, SAMPLE_INTERVAL_MS } from '../utils/frameSampler';
+import { prepareFrameForServer } from '../utils/imageProcessor';
 import { saveImageToDownloads } from '../utils/debugStorage';
 
 type CameraRefType = any;
@@ -14,48 +14,31 @@ export const useCameraEngine = (cameraRef: CameraRefType) => {
     try {
       if (!cameraRef.current) return;
 
-      const photo = await cameraRef.current.takePhoto({
-        flash: 'off',
-        enableShutterSound: false,
+      const photo = await cameraRef.current.takeSnapshot({
+        quality: 100,
+        skipMetadata: true,
       });
 
-      // ── 해상도 검증 로그 ──────────────────────────────────────────────────
-      // 정상(9:16): 4000×2252 → 타일 8장
-      // 비정상(4:3): 4000×3000 → 타일 6장
-      // 이 로그로 실제 촬영 해상도를 확인하세요.
-      console.log(`📷 [${timestamp}] photo: ${photo.width}×${photo.height}`);
+      // 물리적 치수를 그대로 사용합니다.
+      // 논리적 swap을 적용하면 ImageEditor가 물리 픽셀에 잘못된 좌표로 크롭하여
+      // 이미지 경계를 초과 → 크롭 결과가 의도치 않은 크기로 클리핑됩니다.
+      console.log(`📷 [${timestamp}] ${photo.width}×${photo.height}`);
 
-      const aspectRatio = photo.width / photo.height;
-      const expected = 16 / 9;
-      const tolerance = 0.05;
-
-      if (Math.abs(aspectRatio - expected) > tolerance) {
-        console.warn(
-          `⚠️ 비율 불일치: 실제 ${aspectRatio.toFixed(3)} / 기대 ${expected.toFixed(3)}`,
-          '→ cameraFormat에 photoAspectRatio: 16/9 조건을 추가하세요.',
-        );
-      }
-      // ─────────────────────────────────────────────────────────────────────
-
-      const fileUri = `file://${photo.path}`;
-
-      const tileUris: string[] = await processAndEncodeImage(
-        fileUri,
+      const processedUri = await prepareFrameForServer(
+        `file://${photo.path}`,
         photo.width,
         photo.height,
       );
 
-      console.log(`✅ [${timestamp}] 전처리 완료: 640×640 타일 ${tileUris.length}장`);
+      console.log(`✅ [${timestamp}] 서버 전송 준비 완료 (간격: ${SAMPLE_INTERVAL_MS}ms)`);
 
-      // 디버그: 타일 전체 Downloads 저장
-      await Promise.allSettled(
-        tileUris.map((uri, index) =>
-          saveImageToDownloads(uri, `${timestamp}_${index}`),
-        ),
-      );
+      await saveImageToDownloads(processedUri, timestamp);
+
+      // TODO: 서버 전송
+      // await uploadToServer(processedUri, timestamp);
 
     } catch (e) {
-      console.log('이미지 변환 에러 건너뜀 (Fail-Fast)', e);
+      console.error('프레임 처리 실패 (건너뜀):', e);
     }
   }, [cameraRef]);
 
