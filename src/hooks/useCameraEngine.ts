@@ -1,42 +1,58 @@
 import { useCallback } from 'react';
-import { useFrameProcessor } from 'react-native-vision-camera'; // CameraFile 제거
+import { useFrameProcessor } from 'react-native-vision-camera';
 import { useRunOnJS, useSharedValue } from 'react-native-worklets-core';
 import { shouldProcessFrame } from '../utils/frameSampler';
-import { getCropConfig, processAndEncodeImage } from '../utils/imageProcessor';
-import { saveImageToDownloads } from '../utils/debugStorage'; // 디버그 유틸 추가
+import { processAndEncodeImage } from '../utils/imageProcessor';
+import { saveImageToDownloads } from '../utils/debugStorage';
 
-// 컴포넌트(MainScreen)에서 전달받을 Camera Ref의 타입 (임시 지정)
-type CameraRefType = any; 
+type CameraRefType = any;
 
 export const useCameraEngine = (cameraRef: CameraRefType) => {
   const lastTimestamp = useSharedValue<number>(0);
 
-  /**
-   * @function processFrameOnJS
-   * @description 프레임 프로세서의 신호를 받아 JS 스레드에서 실제 촬영 및 전처리를 수행합니다.
-   */
-  const processFrameOnJS = useCallback(async (timestamp: number, cropData: any) => {
+  const processFrameOnJS = useCallback(async (timestamp: number) => {
     try {
-      console.log(`⏱️ [${timestamp}] 촬영 및 전처리 시작...`);
-      
-      // 1. JS 스레드에서 Camera Ref를 사용해 아주 빠르게 사진을 찍습니다 (플래시/소리 Off 필수)
       if (!cameraRef.current) return;
+
       const photo = await cameraRef.current.takePhoto({
         flash: 'off',
-        enableShutterSound: false, // 셔터음 끄기 (빠른 연속 촬영을 위해)
+        enableShutterSound: false,
       });
+
+      // ── 해상도 검증 로그 ──────────────────────────────────────────────────
+      // 정상(9:16): 4000×2252 → 타일 8장
+      // 비정상(4:3): 4000×3000 → 타일 6장
+      // 이 로그로 실제 촬영 해상도를 확인하세요.
+      console.log(`📷 [${timestamp}] photo: ${photo.width}×${photo.height}`);
+
+      const aspectRatio = photo.width / photo.height;
+      const expected = 16 / 9;
+      const tolerance = 0.05;
+
+      if (Math.abs(aspectRatio - expected) > tolerance) {
+        console.warn(
+          `⚠️ 비율 불일치: 실제 ${aspectRatio.toFixed(3)} / 기대 ${expected.toFixed(3)}`,
+          '→ cameraFormat에 photoAspectRatio: 16/9 조건을 추가하세요.',
+        );
+      }
+      // ─────────────────────────────────────────────────────────────────────
 
       const fileUri = `file://${photo.path}`;
 
-      // 2. 크롭 및 리사이즈 실행
-      const finalImageUri = await processAndEncodeImage(fileUri, cropData);
-      
-      console.log(`✅ [${timestamp}] 전처리 완료: 640x640 JPEG -> ${finalImageUri}`);
-      
-      // -----------------------------------------------------
-      // 📸 [디버그용] 안드로이드 Download 폴더로 복사 실행
-      await saveImageToDownloads(finalImageUri, timestamp);
-      // -----------------------------------------------------
+      const tileUris: string[] = await processAndEncodeImage(
+        fileUri,
+        photo.width,
+        photo.height,
+      );
+
+      console.log(`✅ [${timestamp}] 전처리 완료: 640×640 타일 ${tileUris.length}장`);
+
+      // 디버그: 타일 전체 Downloads 저장
+      await Promise.allSettled(
+        tileUris.map((uri, index) =>
+          saveImageToDownloads(uri, `${timestamp}_${index}`),
+        ),
+      );
 
     } catch (e) {
       console.log('이미지 변환 에러 건너뜀 (Fail-Fast)', e);
@@ -49,15 +65,9 @@ export const useCameraEngine = (cameraRef: CameraRefType) => {
     'worklet';
     const now = Date.now();
 
-    // 1. 3~5 FPS 샘플링 필터 통과 시에만 실행 (타이머 역할)
     if (shouldProcessFrame(now, lastTimestamp.value)) {
       lastTimestamp.value = now;
-      
-      // 2. 크롭 좌표 계산
-      const cropData = getCropConfig(frame.width, frame.height); 
-
-      // 3. JS 스레드에 "지금 찍어!" 라고 신호와 메타데이터만 보냄
-      runProcessFrame(now, cropData); 
+      runProcessFrame(now);
     }
   }, [lastTimestamp, runProcessFrame]);
 

@@ -18,9 +18,10 @@ const MainScreen = () => {
     devices.find(d => d.position === 'back');
 
   const cameraFormat = useCameraFormat(device, [
+    { photoAspectRatio: 16 / 9 },
     { videoAspectRatio: 16 / 9 },
-    { photoResolution: 'max' },
-    { videoResolution: 'max' },
+    { photoResolution: 'max'   },
+    { videoResolution: 'max'   },
   ]);
 
   const cameraRef = useRef<Camera>(null);

@@ -6,7 +6,7 @@ import RNFS from 'react-native-fs';
  * @param {string} fileUri - 복사할 원본 파일의 URI (file://...)
  * @param {number} timestamp - 파일명 충돌을 막기 위한 타임스탬프
  */
-export const saveImageToDownloads = async (fileUri: string, timestamp: number) => {
+export const saveImageToDownloads = async (fileUri: string, timestamp: string) => {
   try {
     // 안드로이드 공용 다운로드 폴더 내 asphalt 디렉토리 경로
     const downloadDir = `${RNFS.DownloadDirectoryPath}/asphalt`;
