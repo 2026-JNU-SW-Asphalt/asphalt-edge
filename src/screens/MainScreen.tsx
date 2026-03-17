@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, Animated,
   ActivityIndicator, AppState, AppStateStatus, Dimensions,
@@ -32,9 +32,22 @@ const MainScreen = () => {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const appState = useRef(AppState.currentState);
 
-  // zoom: device 확정 시점에 minZoom으로 명시적 동기화
-  const [zoom, setZoom] = useState<number>(1);
-  useEffect(() => {
+  /**
+   * zoom 초기값을 undefined로 설정합니다.
+   *
+   * 문제 원인:
+   *   Camera 네이티브 초기화 완료 전, 기본값(1x)으로 프리뷰가 시작됩니다.
+   *   초기화 완료(onInitialized) 시점에 zoom prop이 이미 0.6으로 설정되어 있으면
+   *   React가 props 변경이 없다고 판단해 re-render를 생략 → zoom 미적용.
+   *
+   * 해결:
+   *   초기값을 undefined로 두고, onInitialized 콜백에서 device.minZoom을 set합니다.
+   *   undefined → 0.6 으로 변경 → React가 props 변경으로 인식 → re-render
+   *   → 네이티브에 zoom 재전달 → 정상 적용.
+   */
+  const [zoom, setZoom] = useState<number | undefined>(undefined);
+
+  const handleInitialized = useCallback(() => {
     if (device?.minZoom !== undefined) {
       setZoom(device.minZoom);
     }
@@ -48,7 +61,6 @@ const MainScreen = () => {
     return stop;
   }, [isTracking, startSampling]);
 
-  // 탐지 버튼 모핑 애니메이션
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.spring(anim, {
@@ -120,8 +132,7 @@ const MainScreen = () => {
             device={device}
             isActive={true}
             photo={true}
-            // frameProcessor 완전 제거
-            // → 카메라 세션 전환 없음 → 녹화 전/후 프리뷰 화질 동일
+            video={true}
             pixelFormat="rgb"
             videoStabilizationMode="off"
             enableLocation={true}
@@ -129,6 +140,7 @@ const MainScreen = () => {
             zoom={zoom}
             enableZoomGesture={true}
             resizeMode="cover"
+            onInitialized={handleInitialized}
           />
         )}
       </View>

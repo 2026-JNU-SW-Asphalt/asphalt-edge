@@ -59,4 +59,10 @@ export const styles = StyleSheet.create({
   innerShape: {
     backgroundColor: '#e0000f',
   },
+  skeletonOverlay: {
+  ...StyleSheet.absoluteFill, // Camera와 동일한 영역을 완전히 덮음
+  backgroundColor: '#000',
+  justifyContent: 'center',
+  alignItems: 'center',
+},
 });
