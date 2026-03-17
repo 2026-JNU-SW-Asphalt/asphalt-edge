@@ -17,9 +17,7 @@ export const openAppSettings = async () => {
 export const requestHardwarePermissions = async (): Promise<boolean> => {
   if (Platform.OS === 'android') {
     // 1. GPS 권한 요청
-    const locationStatus = await PermissionsAndroid.request(
-      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
-    );
+    const locationStatus = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
 
     // 2. 카메라 권한 요청
     const cameraPermission = await Camera.requestCameraPermission();
@@ -28,9 +26,7 @@ export const requestHardwarePermissions = async (): Promise<boolean> => {
     // 최신 버전은 저장 시 권한이 필요 없는 경우가 많으나, 호환성을 위해 체크
     let storageStatus = PermissionsAndroid.RESULTS.GRANTED;
     if (Platform.Version < 33) {
-      storageStatus = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE
-      );
+      storageStatus = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE);
     }
 
     return (
@@ -50,7 +46,7 @@ export const checkPermissionStatus = async (): Promise<boolean> => {
   if (Platform.OS === 'android') {
     const hasLocation = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
     const cameraPermission = Camera.getCameraPermissionStatus();
-    
+
     let hasStorage = true;
     if (Platform.Version < 33) {
       hasStorage = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE);
