@@ -11,47 +11,39 @@ import { useCameraEngine } from '../hooks/useCameraEngine';
 import { requestHardwarePermissions, openAppSettings, checkPermissionStatus } from '../utils/permission';
 import { styles, SHAPE } from './MainScreen.styles';
 
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('screen');
+const CAMERA_ZOOM = 2;
 
 const MainScreen = () => {
   const devices = useCameraDevices();
-  const device =
-    devices.find(d => d.position === 'back' && d.physicalDevices.includes('ultra-wide-angle-camera')) ||
-    devices.find(d => d.position === 'back');
+  const device = devices.find(d => d.position === 'back');
 
   const cameraFormat = useCameraFormat(device, [
-    { videoResolution: { width: SCREEN_H, height: SCREEN_W } },
-    { photoAspectRatio: 16 / 9 },
+    { videoResolution: { width: 3840, height: 2160 } },
+    { photoResolution: { width: 3840, height: 2160 } },
     { videoAspectRatio: 16 / 9 },
+    { photoAspectRatio: 16 / 9 },
     { photoResolution: 'max' },
   ]);
+
+  useEffect(() => {
+  if (!cameraFormat) return;
+  console.log('✅ 선택된 포맷:', {
+    photo: `${cameraFormat.photoWidth}×${cameraFormat.photoHeight}`,
+    video: `${cameraFormat.videoWidth}×${cameraFormat.videoHeight}`,
+    fps:   `${cameraFormat.minFps}~${cameraFormat.maxFps}`,
+  });
+}, [cameraFormat]);
 
   const cameraRef = useRef<Camera>(null);
   const { startSampling } = useCameraEngine(cameraRef);
   const { isTracking, setIsTracking, currentLocation } = usePotholeStore();
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const appState = useRef(AppState.currentState);
-
-  /**
-   * zoom 초기값을 undefined로 설정합니다.
-   *
-   * 문제 원인:
-   *   Camera 네이티브 초기화 완료 전, 기본값(1x)으로 프리뷰가 시작됩니다.
-   *   초기화 완료(onInitialized) 시점에 zoom prop이 이미 0.6으로 설정되어 있으면
-   *   React가 props 변경이 없다고 판단해 re-render를 생략 → zoom 미적용.
-   *
-   * 해결:
-   *   초기값을 undefined로 두고, onInitialized 콜백에서 device.minZoom을 set합니다.
-   *   undefined → 0.6 으로 변경 → React가 props 변경으로 인식 → re-render
-   *   → 네이티브에 zoom 재전달 → 정상 적용.
-   */
   const [zoom, setZoom] = useState<number | undefined>(undefined);
 
   const handleInitialized = useCallback(() => {
-    if (device?.minZoom !== undefined) {
-      setZoom(device.minZoom);
-    }
-  }, [device?.minZoom]);
+    setZoom(CAMERA_ZOOM);
+  }, []);
 
   useLocationTracker();
 
@@ -133,14 +125,15 @@ const MainScreen = () => {
             isActive={true}
             photo={true}
             video={true}
-            pixelFormat="rgb"
+            pixelFormat="yuv"
             videoStabilizationMode="off"
             enableLocation={true}
             format={cameraFormat}
             zoom={zoom}
-            enableZoomGesture={true}
             resizeMode="cover"
             onInitialized={handleInitialized}
+            exposure={-1}
+            photoQualityBalance='balanced'
           />
         )}
       </View>

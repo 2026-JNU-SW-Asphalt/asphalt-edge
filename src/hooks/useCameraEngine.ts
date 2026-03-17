@@ -9,15 +9,15 @@ export const useCameraEngine = (cameraRef: CameraRefType) => {
   const isProcessing = useRef(false);
 
   const processFrame = useCallback(async () => {
-    // 이전 처리가 끝나지 않았으면 건너뜀 (중복 실행 방지)
     if (isProcessing.current || !cameraRef.current) return;
     isProcessing.current = true;
 
     const timestamp = Date.now();
     try {
-      const photo = await cameraRef.current.takeSnapshot({
-        quality: 100,
-        skipMetadata: true,
+      const photo = await cameraRef.current.takePhoto({
+        flash: 'off',
+        enableShutterSound: false,
+        qualityPrioritization: 'balanced',
       });
 
       console.log(`📷 [${timestamp}] ${photo.width}×${photo.height}`);
@@ -27,6 +27,8 @@ export const useCameraEngine = (cameraRef: CameraRefType) => {
         photo.width,
         photo.height,
       );
+
+      console.log(photo.width, photo.height)
 
       console.log(`✅ [${timestamp}] 서버 전송 준비 완료`);
       await saveImageToDownloads(processedUri, timestamp);
@@ -40,10 +42,6 @@ export const useCameraEngine = (cameraRef: CameraRefType) => {
     }
   }, [cameraRef]);
 
-  /**
-   * isTracking 활성 시 호출 → SAMPLE_INTERVAL_MS 간격으로 촬영 시작
-   * 반환된 cleanup 함수를 useEffect return에 연결하면 자동 정리됩니다.
-   */
   const startSampling = useCallback(() => {
     const id = setInterval(processFrame, SAMPLE_INTERVAL_MS);
     return () => clearInterval(id);
