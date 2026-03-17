@@ -227,7 +227,7 @@ const MainScreen = () => {
 const overlayStyles = StyleSheet.create({
   // 화면 전체 dim 오버레이
   dim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0, 0, 0, 0.65)',
     justifyContent: 'center',
     alignItems: 'center',
