@@ -24,12 +24,12 @@ const TestScreen = () => {
 
     // 2. 이미지 없이 텍스트 데이터만 전송하는 모드로 설정
     // 실제 파일이 없으므로 null을 전달하여 packetCreator에서 처리하게 함
-    const dummyImage = null; 
+    const dummyImage = null;
 
     try {
       // 3. FormData 변환 (이미지가 null이면 메타데이터만 포함됨)
       const formData = createPotholeFormData(metadata, dummyImage);
-      
+
       console.log('🚀 전송 시도 중...');
       const result = await uploadPotholeFrame(formData);
 
@@ -46,16 +46,9 @@ const TestScreen = () => {
 
   return (
     <View style={{ flex: 1, justifyContent: 'center', padding: 20 }}>
-      <Button 
-        title={isTracking ? "탐지 중지" : "탐지 시작(테스트)"} 
-        onPress={() => setIsTracking(!isTracking)} 
-      />
+      <Button title={isTracking ? '탐지 중지' : '탐지 시작(테스트)'} onPress={() => setIsTracking(!isTracking)} />
       <View style={{ marginVertical: 10 }} />
-      <Button 
-        title="이미지 없이 데이터만 강제 전송" 
-        onPress={handleTestUpload} 
-        color="#f194ff" 
-      />
+      <Button title="이미지 없이 데이터만 강제 전송" onPress={handleTestUpload} color="#f194ff" />
     </View>
   );
 };

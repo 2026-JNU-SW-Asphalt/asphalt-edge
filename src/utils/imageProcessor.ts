@@ -1,56 +1,50 @@
 import ImageEditor from '@react-native-community/image-editor';
 import ImageResizer from '@bam.tech/react-native-image-resizer';
 
-const FINAL_WEBP_QUALITY = 100;
-const OUTPUT_HEIGHT = 1280;
-
-const getUsableRegion = (width: number, height: number) => {
-  const skipLeft = Math.floor(width * 0.10);
-  return {
-    x: 0,
-    y: skipLeft,
-    width,
-    height: OUTPUT_HEIGHT,
-  };
-};
+/* 전처리 설정 */
+const WEBP_QUALITY = 100;
+const CROP_HEIGHT = 1280;
 
 /**
- * @function prepareFrameForServer
- * @param fileUri     - takePhoto() 캡처 URI
- * @param imageWidth  - 원본 너비  (가로 모드: 4000)
- * @param imageHeight - 원본 높이  (가로 모드: 2252)
- * @returns 전처리 완료된 단일 WebP 이미지 URI
+ * 원본 이미지에서 분석에 사용할 영역(중앙/노면)을 계산합니다.
+ */
+const getCropConfig = (width: number) => ({
+  offset: {
+    x: 0,
+    y: Math.floor(width * 0.1),
+  },
+  size: {
+    width,
+    height: CROP_HEIGHT,
+  },
+});
+
+/**
+ * 캡처된 원본 이미지에 대해 전처리(크롭 및 WebP 변환)를 수행합니다.
  */
 export const prepareFrameForServer = async (
   fileUri: string,
   imageWidth: number,
   imageHeight: number,
 ): Promise<string> => {
+  const cropConfig = getCropConfig(imageWidth);
 
-  // 크롭
-  const usable  = getUsableRegion(imageWidth, imageHeight);
-  const cropped = await ImageEditor.cropImage(fileUri, {
-    offset: { x: usable.x, y: usable.y },
-    size:   { width: usable.width, height: usable.height },
-  });
+  // 1. 노면 위주 영역 크롭
+  const cropped = await ImageEditor.cropImage(fileUri, cropConfig);
 
-  // WebP 압축 (회전 없음, 크기 유지)
-  const result = await ImageResizer.createResizedImage(
+  // 2. WebP 포맷 변환 및 압축
+  const { uri } = await ImageResizer.createResizedImage(
     cropped.uri,
-    usable.width,   // 원본 width 그대로
-    usable.height,  // 원본 height 그대로
+    cropConfig.size.width,
+    cropConfig.size.height,
     'WEBP',
-    FINAL_WEBP_QUALITY,
-    0,              // 회전 없음
+    WEBP_QUALITY,
+    0,
     undefined,
     false,
     { onlyScaleDown: true },
   );
 
-  console.log(
-    `📦 [전처리] 물리 ${imageWidth}×${imageHeight}`,
-    `→ 크롭 ${usable.width}×${usable.height} WebP ${FINAL_WEBP_QUALITY}%`,
-  );
-
-  return result.uri;
+  console.log(`📦 [Pre-process] ${imageWidth}px -> WebP ${CROP_HEIGHT}px (Success)`);
+  return uri;
 };
