@@ -1,44 +1,27 @@
+import React from 'react';
+import { SafeAreaView, StatusBar, StyleSheet } from 'react-native';
+import MainScreen from './src/screens/MainScreen';
+
 /**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
+ * @component App
+ * @description 광주형 AI 포트홀 우선보수 관제 플랫폼 EdgeApp의 메인 엔트리포인트
  */
-
-import { NewAppScreen } from '@react-native/new-app-screen';
-import { StatusBar, StyleSheet, useColorScheme, View } from 'react-native';
-import {
-  SafeAreaProvider,
-  useSafeAreaInsets,
-} from 'react-native-safe-area-context';
-
-function App() {
-  const isDarkMode = useColorScheme() === 'dark';
-
+const App = () => {
   return (
-    <SafeAreaProvider>
-      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-      <AppContent />
-    </SafeAreaProvider>
+    <SafeAreaView style={styles.container}>
+      {/* 상태바를 어두운 배경에 맞게 설정 */}
+      <StatusBar barStyle="light-content" backgroundColor="#000" />
+      
+      {/* 3주차에 작성한 메인 관제 화면 렌더링 */}
+      <MainScreen />
+    </SafeAreaView>
   );
-}
-
-function AppContent() {
-  const safeAreaInsets = useSafeAreaInsets();
-
-  return (
-    <View style={styles.container}>
-      <NewAppScreen
-        templateFileName="App.tsx"
-        safeAreaInsets={safeAreaInsets}
-      />
-    </View>
-  );
-}
+};
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#000', // 카메라 프리뷰와의 일질감을 위해 검은색 배경 설정
   },
 });
 
