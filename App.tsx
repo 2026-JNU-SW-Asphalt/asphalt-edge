@@ -1,19 +1,19 @@
 import React from 'react';
 import { SafeAreaView, StatusBar, StyleSheet } from 'react-native';
-import TestScreen from './src/screens/TestScreen';
+import MainScreen from './src/screens/MainScreen';
 
 /**
  * @component App
- * @description 앱의 메인 진입점. 
- * 지금은 Phase 1 검증을 위해 TestScreen을 띄우지만, 
- * Phase 2에서는 메인 관제 화면(CameraView)으로 교체될 예정입니다.
+ * @description 광주형 AI 포트홀 우선보수 관제 플랫폼 EdgeApp의 메인 엔트리포인트
  */
 const App = () => {
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" />
-      {/* 개발 초기 단계에서는 이렇게 테스트 스크린을 직접 렌더링하여 로직을 검증합니다. */}
-      <TestScreen />
+      {/* 상태바를 어두운 배경에 맞게 설정 */}
+      <StatusBar barStyle="light-content" backgroundColor="#000" />
+      
+      {/* 3주차에 작성한 메인 관제 화면 렌더링 */}
+      <MainScreen />
     </SafeAreaView>
   );
 };
@@ -21,7 +21,7 @@ const App = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#000', // 카메라 프리뷰와의 일질감을 위해 검은색 배경 설정
   },
 });
 
