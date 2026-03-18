@@ -2,7 +2,7 @@ import ImageEditor from '@react-native-community/image-editor';
 import ImageResizer from '@bam.tech/react-native-image-resizer';
 
 /* 전처리 설정 */
-const WEBP_QUALITY = 100;
+const WEBP_QUALITY = 80;
 const CROP_HEIGHT = 1280;
 
 /**
