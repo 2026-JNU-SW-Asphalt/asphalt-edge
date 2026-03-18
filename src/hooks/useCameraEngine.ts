@@ -1,32 +1,52 @@
-import { useCallback } from 'react';
-import { useFrameProcessor } from 'react-native-vision-camera';
-import { useRunOnJS, useSharedValue } from 'react-native-worklets-core';
-import { shouldProcessFrame } from '../utils/frameSampler';
+import { useCallback, useRef } from 'react';
+import { prepareFrameForServer } from '../utils/imageProcessor';
+import { saveImageToDownloads } from '../utils/debugStorage';
+import { SAMPLE_INTERVAL_MS } from '../utils/frameSampler';
 
-/**
- * @function useCameraEngine
- * @description 카메라 프레임을 샘플링하여 처리하는 핵심 엔진 훅
- */
-export const useCameraEngine = () => {
-  // useRef → useSharedValue로 교체 (worklet 내부에서 접근 가능)
-  const lastTimestamp = useSharedValue<number>(0);
+type CameraRefType = any;
 
-  const processFrameOnJS = useCallback((timestamp: number) => {
-    console.log(`📸 프레임 캡처 성공: ${timestamp}`);
-  }, []);
+export const useCameraEngine = (
+  cameraRef: CameraRefType,
+  isValidLandscape: boolean,  // ← 추가: 올바른 가로 모드 여부
+) => {
+  const isProcessing = useRef(false);
 
-  // runOnJS → useRunOnJS로 교체
-  const runProcessFrame = useRunOnJS(processFrameOnJS, [processFrameOnJS]);
+  const processFrame = useCallback(async () => {
+    // 올바른 가로 모드가 아니면 촬영 건너뜀 (isTracking 상태는 유지)
+    if (!isValidLandscape) return;
+    if (isProcessing.current || !cameraRef.current) return;
+    isProcessing.current = true;
 
-  const frameProcessor = useFrameProcessor((frame) => {
-    'worklet';
-    const now = Date.now();
+    const timestamp = Date.now();
+    try {
+      const photo = await cameraRef.current.takePhoto({
+        flash: 'off',
+        enableShutterSound: false,
+        qualityPrioritization: 'balanced',
+      });
 
-    if (shouldProcessFrame(now, lastTimestamp.value)) {
-      lastTimestamp.value = now;
-      runProcessFrame(now);
+      console.log(`📷 [${timestamp}] ${photo.width}×${photo.height}`);
+
+      const processedUri = await prepareFrameForServer(
+        `file://${photo.path}`,
+        photo.width,
+        photo.height,
+      );
+
+      console.log(`✅ [${timestamp}] 서버 전송 준비 완료`);
+      await saveImageToDownloads(processedUri, timestamp);
+
+    } catch (e) {
+      console.error('프레임 처리 실패 (건너뜀):', e);
+    } finally {
+      isProcessing.current = false;
     }
-  }, [lastTimestamp, runProcessFrame]);
+  }, [cameraRef, isValidLandscape]);
 
-  return { frameProcessor };
+  const startSampling = useCallback(() => {
+    const id = setInterval(processFrame, SAMPLE_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [processFrame]);
+
+  return { startSampling };
 };

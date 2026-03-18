@@ -1,66 +1,117 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, AppState, AppStateStatus } from 'react-native';
-import { Camera, useCameraDevice } from 'react-native-vision-camera';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import {
+  View, Text, TouchableOpacity, Animated,
+  ActivityIndicator, AppState, AppStateStatus, StyleSheet,
+} from 'react-native';
+import Orientation, { OrientationType } from 'react-native-orientation-locker';
+import { useCameraDevices, useCameraFormat, Camera } from 'react-native-vision-camera';
 import usePotholeStore from '../store/usePotholeStore';
 import { useLocationTracker } from '../hooks/useLocationTracker';
 import { useCameraEngine } from '../hooks/useCameraEngine';
 import { requestHardwarePermissions, openAppSettings, checkPermissionStatus } from '../utils/permission';
+import { styles, SHAPE } from './MainScreen.styles';
+
+const CAMERA_ZOOM = 2;
 
 /**
- * @component MainScreen
- * @description 광주형 AI 포트홀 관제 플랫폼의 메인 화면. 
- * 카메라 프리뷰, 실시간 GPS 정보, 그리고 Phase 2의 핵심인 프레임 샘플링 엔진을 통합합니다.
+ * 유효한 가로 모드 정의:
+ *   기기를 시계방향으로 회전 = LANDSCAPE-LEFT
+ *   (물리적 기기 하단이 UI 왼쪽에 위치)
  */
+const VALID_LANDSCAPE: OrientationType = OrientationType["LANDSCAPE-LEFT"];
+
 const MainScreen = () => {
-  // 1. 하드웨어 상태 및 데이터 관리
-  const device = useCameraDevice('back');
-  
-  // Phase 2: 프레임 샘플링 엔진 (3~5 FPS 추출 로직 포함)
-  const { frameProcessor } = useCameraEngine();
-  
-  const { isTracking, setIsTracking, currentLocation } = usePotholeStore();
-  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
-  
-  // AppState 상태 추적을 위한 ref
-  const appState = useRef(AppState.currentState);
+  const devices = useCameraDevices();
+  const device = devices.find(d => d.position === 'back');
 
-  // 2. 실시간 GPS 추적 훅 실행 (1Hz 갱신)
-  useLocationTracker();
-
-  /**
-   * @function checkOnlyStatus
-   * @description 앱이 활성화될 때 조용히 권한 상태만 업데이트합니다.
-   */
-  const checkOnlyStatus = async () => {
-    const result = await checkPermissionStatus();
-    setHasPermission(result);
-  };
-
-  /**
-   * @function initialPermissionRequest
-   * @description 앱 최초 실행 시 전체 권한 요청을 수행합니다.
-   */
-  const initialPermissionRequest = async () => {
-    const result = await requestHardwarePermissions();
-    setHasPermission(result);
-  };
+  const cameraFormat = useCameraFormat(device, [
+    { videoResolution: { width: 3840, height: 2160 } },
+    { photoResolution: { width: 3840, height: 2160 } },
+    { videoAspectRatio: 16 / 9 },
+    { photoAspectRatio: 16 / 9 },
+    { photoResolution: 'max' },
+  ]);
 
   useEffect(() => {
-    initialPermissionRequest();
-
-    const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
-      if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
-        checkOnlyStatus();
-      }
-      appState.current = nextAppState;
+    if (!cameraFormat) return;
+    console.log('✅ 선택된 포맷:', {
+      photo: `${cameraFormat.photoWidth}×${cameraFormat.photoHeight}`,
+      video: `${cameraFormat.videoWidth}×${cameraFormat.videoHeight}`,
+      fps:   `${cameraFormat.minFps}~${cameraFormat.maxFps}`,
     });
+  }, [cameraFormat]);
 
-    return () => subscription.remove();
-  }, []);
+  const cameraRef = useRef<Camera>(null);
+
+  // 올바른 가로 모드 여부 (시계방향 회전 = LANDSCAPE-LEFT만 유효)
+  const [isValidLandscape, setIsValidLandscape] = useState<boolean>(false);
 
   /**
-   * @description 권한 요청 중일 때 표시할 로딩 화면
+   * isValidLandscape를 useCameraEngine에 전달:
+   *   - true:  실제 촬영 수행
+   *   - false: 촬영 건너뜀 (isTracking 상태는 유지)
    */
+  const { startSampling } = useCameraEngine(cameraRef, isValidLandscape);
+  const { isTracking, setIsTracking, currentLocation } = usePotholeStore();
+  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const appState = useRef(AppState.currentState);
+  const [zoom, setZoom] = useState<number | undefined>(undefined);
+
+  const handleInitialized = useCallback(() => {
+    setZoom(CAMERA_ZOOM);
+  }, []);
+
+  useLocationTracker();
+
+  useEffect(() => {
+    if (!isTracking) return;
+    const stop = startSampling();
+    return stop;
+  }, [isTracking, startSampling]);
+
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.spring(anim, {
+      toValue: isTracking ? 1 : 0,
+      useNativeDriver: false,
+      speed: 1,
+    }).start();
+  }, [isTracking]);
+
+  const animatedSize = anim.interpolate({
+    inputRange:  [0, 1],
+    outputRange: [SHAPE.circle.size, SHAPE.square.size],
+  });
+  const animatedRadius = anim.interpolate({
+    inputRange:  [0, 1],
+    outputRange: [SHAPE.circle.radius, SHAPE.square.radius],
+  });
+
+  useEffect(() => {
+    Orientation.lockToPortrait();
+
+    // 물리적 기기 방향 감지 (UI는 Portrait 고정 유지)
+    const handleOrientation = (o: OrientationType) => {
+      setIsValidLandscape(o === VALID_LANDSCAPE);
+    };
+    Orientation.addDeviceOrientationListener(handleOrientation);
+
+    const sub = AppState.addEventListener('change', async (next: AppStateStatus) => {
+      if (appState.current.match(/inactive|background/) && next === 'active') {
+        setHasPermission(await checkPermissionStatus());
+      }
+      appState.current = next;
+    });
+
+    (async () => setHasPermission(await requestHardwarePermissions()))();
+
+    return () => {
+      Orientation.removeDeviceOrientationListener(handleOrientation);
+      Orientation.unlockAllOrientations();
+      sub.remove();
+    };
+  }, []);
+
   if (hasPermission === null) {
     return (
       <View style={styles.centered}>
@@ -70,9 +121,6 @@ const MainScreen = () => {
     );
   }
 
-  /**
-   * @description 권한 거절 시 표시할 예외 처리 화면
-   */
   if (hasPermission === false) {
     return (
       <View style={styles.centered}>
@@ -90,87 +138,121 @@ const MainScreen = () => {
 
   return (
     <View style={styles.container}>
-      {/* [Phase 2 핵심 변경사항]
-        - frameProcessor: isTracking 상태일 때만 샘플링 엔진 가동
-        - pixelFormat: Android 환경에서 하드웨어 가속에 가장 효율적인 'yuv' 포맷 사용
-        - videoStabilizationMode: 주행 중 진동에 의한 초점 흔들림 방지를 위해 'off' (광학 고정 보조)
-      */}
-      {device && (
-        <Camera
-          style={StyleSheet.absoluteFill}
-          device={device}
-          isActive={true}
-          frameProcessor={isTracking ? frameProcessor : undefined}
-          pixelFormat="yuv"
-          videoStabilizationMode="off"
-          enableLocation={true}
-        />
+
+      <View style={styles.cameraWrapper}>
+        {device && (
+          <Camera
+            ref={cameraRef}
+            style={{ flex: 1 }}
+            device={device}
+            isActive={true}
+            photo={true}
+            video={true}
+            pixelFormat="yuv"
+            videoStabilizationMode="off"
+            enableLocation={true}
+            format={cameraFormat}
+            zoom={zoom}
+            resizeMode="cover"
+            onInitialized={handleInitialized}
+            exposure={-1}
+            photoQualityBalance="balanced"
+          />
+        )}
+      </View>
+
+      {/* 가로 모드가 아닐 때 dim 오버레이 */}
+      {!isValidLandscape && (
+        <View
+          style={overlayStyles.dim}
+          pointerEvents={isTracking ? 'none' : 'auto'}
+        >
+          <Text style={overlayStyles.dimIcon}>🔄</Text>
+          <Text style={overlayStyles.dimText}>
+            {isTracking
+              ? '기기를 시계방향으로\n회전해주세요\n\n(촬영이 일시 중단됩니다)'
+              : '기기를 시계방향으로\n회전해주세요'}
+          </Text>
+        </View>
       )}
 
-      {/* 실시간 디버그 오버레이 (상단) */}
       <View style={styles.debugOverlay}>
         <Text style={styles.debugTitle}>GWANGJU AI CONTROL</Text>
         <View style={styles.divider} />
-        <Text style={styles.debugLabel}>LAT: <Text style={styles.debugValue}>{currentLocation.lat.toFixed(6)}</Text></Text>
-        <Text style={styles.debugLabel}>LNG: <Text style={styles.debugValue}>{currentLocation.lng.toFixed(6)}</Text></Text>
+        <Text style={styles.debugLabel}>
+          LAT: <Text style={styles.debugValue}>{currentLocation?.lat?.toFixed(6) || '0.000000'}</Text>
+        </Text>
+        <Text style={styles.debugLabel}>
+          LNG: <Text style={styles.debugValue}>{currentLocation?.lng?.toFixed(6) || '0.000000'}</Text>
+        </Text>
         <Text style={[styles.statusText, { color: isTracking ? '#00ff00' : '#ffcc00' }]}>
           STATUS: {isTracking ? 'RUNNING' : 'IDLE'}
         </Text>
       </View>
 
-      {/* 탐지 제어 버튼 (하단) */}
-      <TouchableOpacity 
-        activeOpacity={0.8}
-        style={[styles.mainButton, { backgroundColor: isTracking ? '#ff4d4d' : '#4d79ff' }]}
-        onPress={() => setIsTracking(!isTracking)}
+      {/* 탐지 버튼: 가로 모드 여부에 따라 색상 변경 */}
+      <TouchableOpacity
+        activeOpacity={isValidLandscape || isTracking ? 0.8 : 1}
+        style={[
+          styles.mainButton,
+          (!isValidLandscape && !isTracking) && overlayStyles.buttonDisabled,
+        ]}
+        onPress={() => {
+          if (isTracking) {
+            setIsTracking(false);
+            return;
+          }
+          if (!isValidLandscape) return;
+          setIsTracking(true);
+        }}
       >
-        <Text style={styles.mainButtonText}>
-          {isTracking ? '탐지 종료' : '탐지 시작'}
-        </Text>
+        <Animated.View
+          style={[
+            styles.innerShape,
+            (!isValidLandscape && !isTracking) && overlayStyles.innerShapeDisabled,
+            {
+              width:        animatedSize,
+              height:       animatedSize,
+              borderRadius: animatedRadius,
+            },
+          ]}
+        />
       </TouchableOpacity>
+
     </View>
   );
 };
 
-// 스타일 시트는 기존 규격 유지
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1a1a1a', padding: 20 },
-  errorIcon: { fontSize: 50, marginBottom: 20 },
-  errorText: { color: '#fff', fontSize: 22, fontWeight: 'bold', marginBottom: 10 },
-  subText: { color: '#aaa', textAlign: 'center', lineHeight: 22, marginBottom: 30 },
-  loadingText: { color: '#fff', marginTop: 15 },
-  settingsButton: { backgroundColor: '#4d79ff', paddingVertical: 15, paddingHorizontal: 30, borderRadius: 10 },
-  debugOverlay: { 
-    position: 'absolute', 
-    top: 60, 
-    left: 20, 
-    backgroundColor: 'rgba(0,0,0,0.7)', 
-    padding: 15, 
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)'
+// 오버레이 및 비활성 버튼 스타일
+const overlayStyles = StyleSheet.create({
+  // 화면 전체 dim 오버레이
+  dim: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
   },
-  debugTitle: { color: '#4d79ff', fontSize: 12, fontWeight: 'bold', letterSpacing: 1 },
-  divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.2)', marginVertical: 8 },
-  debugLabel: { color: '#fff', fontSize: 13, marginBottom: 4 },
-  debugValue: { color: '#00ffff', fontWeight: '500' },
-  statusText: { fontSize: 15, fontWeight: 'bold', marginTop: 5 },
-  mainButton: { 
-    position: 'absolute', 
-    bottom: 50, 
-    alignSelf: 'center', 
-    paddingVertical: 18, 
-    paddingHorizontal: 50, 
-    borderRadius: 35,
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4.65
+  dimIcon: {
+    fontSize: 48,
+    marginBottom: 16,
   },
-  mainButtonText: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' }
+  dimText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    lineHeight: 28,
+  },
+  // 비활성 버튼 외곽 (연한 회색)
+  buttonDisabled: {
+    backgroundColor: '#d0d0d0',
+    borderColor: '#b0b0b0',
+  },
+  // 비활성 버튼 내부 도형 (진한 회색)
+  innerShapeDisabled: {
+    backgroundColor: '#888',
+  },
 });
 
 export default MainScreen;
