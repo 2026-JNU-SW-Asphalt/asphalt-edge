@@ -11,22 +11,19 @@ const getCropConfig = (width: number) => ({
 });
 
 /**
- * crop + resize 수행 후 WebP 파일 경로를 반환한다.
- * 중간 임시 파일(crop 결과)은 resize 완료 즉시 삭제한다.
- * 반환된 파일 경로의 삭제는 호출자 책임이다.
+ * crop + resize 수행 후 WebP 파일 경로(절대경로)를 반환한다.
+ * 반환된 파일의 삭제는 호출자 책임이다.
  */
-export const prepareFrameForServer = async (fileUri: string, imageWidth: number): Promise<string> => {
+export const prepareFrameForServer = async (filePath: string, imageWidth: number): Promise<string> => {
   const cropConfig = getCropConfig(imageWidth);
   let croppedPath: string | null = null;
 
   try {
-    // 1. 크롭
-    const cropped = await ImageEditor.cropImage(fileUri, cropConfig);
+    const cropped = await ImageEditor.cropImage(`file://${filePath}`, cropConfig);
     croppedPath = cropped.uri.replace('file://', '');
 
-    // 2. WebP 리사이즈
     const { uri: resizedUri } = await ImageResizer.createResizedImage(
-      cropped.uri,
+      `file://${croppedPath}`,
       cropConfig.size.width,
       cropConfig.size.height,
       'WEBP',
@@ -37,14 +34,11 @@ export const prepareFrameForServer = async (fileUri: string, imageWidth: number)
       { onlyScaleDown: true },
     );
 
-    // 3. 크롭 중간 파일 즉시 삭제
     await RNFS.unlink(croppedPath);
     croppedPath = null;
 
-    console.log(`📦 [Pre-process] ${imageWidth}px → WebP ${CROP_HEIGHT}px`);
     return resizedUri.replace('file://', '');
   } finally {
-    // 예외 발생 시 크롭 중간 파일 잔존 방지
     if (croppedPath) await RNFS.unlink(croppedPath).catch(() => {});
   }
 };
