@@ -25,10 +25,10 @@ const MainScreen = () => {
   const devices = useCameraDevices();
   const device = devices.find((d) => d.position === 'back');
   const cameraFormat = useCameraFormat(device, [
-    { videoResolution: { width: 3840, height: 2160 } },
+    { videoResolution: { width: 1920, height: 1080 } },
+    { photoResolution: { width: 1920, height: 1080 } },
     { videoAspectRatio: 16 / 9 },
     { photoAspectRatio: 16 / 9 },
-    { photoResolution: 'max' },
   ]);
 
   // 2. Ref 및 상태 관리

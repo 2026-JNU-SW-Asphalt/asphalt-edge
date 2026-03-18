@@ -1,50 +1,50 @@
 import ImageEditor from '@react-native-community/image-editor';
 import ImageResizer from '@bam.tech/react-native-image-resizer';
+import RNFS from 'react-native-fs';
 
-/* 전처리 설정 */
 const WEBP_QUALITY = 80;
 const CROP_HEIGHT = 1280;
 
-/**
- * 원본 이미지에서 분석에 사용할 영역(중앙/노면)을 계산합니다.
- */
 const getCropConfig = (width: number) => ({
-  offset: {
-    x: 0,
-    y: Math.floor(width * 0.1),
-  },
-  size: {
-    width,
-    height: CROP_HEIGHT,
-  },
+  offset: { x: 0, y: Math.floor(width * 0.1) },
+  size: { width, height: CROP_HEIGHT },
 });
 
 /**
- * 캡처된 원본 이미지에 대해 전처리(크롭 및 WebP 변환)를 수행합니다.
+ * crop + resize 수행 후 WebP 파일 경로를 반환한다.
+ * 중간 임시 파일(crop 결과)은 resize 완료 즉시 삭제한다.
+ * 반환된 파일 경로의 삭제는 호출자 책임이다.
  */
-export const prepareFrameForServer = async (
-  fileUri: string,
-  imageWidth: number,
-  imageHeight: number,
-): Promise<string> => {
+export const prepareFrameForServer = async (fileUri: string, imageWidth: number): Promise<string> => {
   const cropConfig = getCropConfig(imageWidth);
+  let croppedPath: string | null = null;
 
-  // 1. 노면 위주 영역 크롭
-  const cropped = await ImageEditor.cropImage(fileUri, cropConfig);
+  try {
+    // 1. 크롭
+    const cropped = await ImageEditor.cropImage(fileUri, cropConfig);
+    croppedPath = cropped.uri.replace('file://', '');
 
-  // 2. WebP 포맷 변환 및 압축
-  const { uri } = await ImageResizer.createResizedImage(
-    cropped.uri,
-    cropConfig.size.width,
-    cropConfig.size.height,
-    'WEBP',
-    WEBP_QUALITY,
-    0,
-    undefined,
-    false,
-    { onlyScaleDown: true },
-  );
+    // 2. WebP 리사이즈
+    const { uri: resizedUri } = await ImageResizer.createResizedImage(
+      cropped.uri,
+      cropConfig.size.width,
+      cropConfig.size.height,
+      'WEBP',
+      WEBP_QUALITY,
+      0,
+      undefined,
+      false,
+      { onlyScaleDown: true },
+    );
 
-  console.log(`📦 [Pre-process] ${imageWidth}px -> WebP ${CROP_HEIGHT}px (Success)`);
-  return uri;
+    // 3. 크롭 중간 파일 즉시 삭제
+    await RNFS.unlink(croppedPath);
+    croppedPath = null;
+
+    console.log(`📦 [Pre-process] ${imageWidth}px → WebP ${CROP_HEIGHT}px`);
+    return resizedUri.replace('file://', '');
+  } finally {
+    // 예외 발생 시 크롭 중간 파일 잔존 방지
+    if (croppedPath) await RNFS.unlink(croppedPath).catch(() => {});
+  }
 };
