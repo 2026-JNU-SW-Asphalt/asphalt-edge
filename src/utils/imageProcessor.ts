@@ -2,28 +2,27 @@ import ImageEditor from '@react-native-community/image-editor';
 import ImageResizer from '@bam.tech/react-native-image-resizer';
 import RNFS from 'react-native-fs';
 
-const WEBP_QUALITY = 80;
-const CROP_HEIGHT = 1280;
+const WEBP_QUALITY = 70;
+const CROP_HEIGHT = 640;
 
-/**
- * 파일 경로 컨벤션
- * - 모든 경로: file:// 없는 절대경로
- * - file:// 부착: 네이티브 API(ImageEditor, ImageResizer) 호출 직전에만
- * - RNFS API: 절대경로 그대로 사용 가능
- */
 const toUri = (path: string) => `file://${path}`;
 const toPath = (uri: string) => uri.replace('file://', '');
 
-const getCropConfig = (width: number) => ({
-  offset: { x: 0, y: Math.floor(width * 0.1) },
+// 1080 -> Top < 325|640|116 > Bottom
+const getCropConfig = (width: number, height: number) => ({
+  offset: { x: 0, y: Math.floor(height * 0.3) },
   size: { width, height: CROP_HEIGHT },
 });
 
 /**
  * crop + resize 수행 후 WebP 파일 경로(절대경로)를 반환한다.
  */
-export const prepareFrameForServer = async (filePath: string, imageWidth: number): Promise<string> => {
-  const cropConfig = getCropConfig(imageWidth);
+export const prepareFrameForServer = async (
+  filePath: string,
+  imageWidth: number,
+  imageHeight: number,
+): Promise<string> => {
+  const cropConfig = getCropConfig(imageWidth, imageHeight);
   let croppedPath: string | null = null;
 
   try {
