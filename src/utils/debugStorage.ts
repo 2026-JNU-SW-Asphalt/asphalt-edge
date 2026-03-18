@@ -1,8 +1,12 @@
 import RNFS from 'react-native-fs';
 
+/**
+ * 파일 경로 컨벤션
+ * - 수신: 절대경로 (file:// 없음)
+ * - RNFS.copyFile: 절대경로 그대로 사용
+ */
 const TARGET_DIR = `${RNFS.DownloadDirectoryPath}/asphalt`;
 
-// ✅ 디렉토리 존재 확인을 최초 1회만 수행
 let dirReady = false;
 
 const ensureDir = async (): Promise<void> => {
@@ -14,12 +18,12 @@ const ensureDir = async (): Promise<void> => {
 };
 
 /**
- * filePath: file:// 없는 절대경로
- * WebP 파일을 Download/asphalt 폴더에 복사한다.
+ * @param filePath  절대경로 (file:// 없음)
  */
 export const saveImageToDownloads = async (filePath: string, timestamp: number): Promise<void> => {
   await ensureDir();
   const ext = filePath.split('.').pop() ?? 'webp';
   const destPath = `${TARGET_DIR}/frame_${timestamp}.${ext}`;
+  // ✅ RNFS.copyFile은 절대경로 직접 수용
   await RNFS.copyFile(filePath, destPath);
 };
