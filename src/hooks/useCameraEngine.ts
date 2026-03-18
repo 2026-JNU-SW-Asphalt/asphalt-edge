@@ -1,42 +1,88 @@
 import { useCallback, useRef } from 'react';
-import { Camera } from 'react-native-vision-camera';
+import { Camera, PhotoFile } from 'react-native-vision-camera';
+import RNFS from 'react-native-fs';
+import usePotholeStore from '../store/usePotholeStore';
 import { prepareFrameForServer } from '../utils/imageProcessor';
 import { saveImageToDownloads } from '../utils/debugStorage';
 
-/**
- * 샘플링 주기 (333ms = 3 FPS)
- */
 const SAMPLE_INTERVAL_MS = 333;
+const MAX_CONCURRENT_PHOTOS = 2;
+const MAX_CONCURRENT_JOBS = 2;
+
+interface CapturedFrame {
+  photo: PhotoFile;
+  location: { lat: number; lng: number } | null;
+  timestamp: number;
+}
 
 export const useCameraEngine = (cameraRef: React.RefObject<Camera>, isValidLandscape: boolean) => {
-  const isProcessing = useRef(false);
+  const { currentLocation } = usePotholeStore();
+  const activePhotos = useRef(0);
+  const activeJobs = useRef(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const processFrame = useCallback(async () => {
-    // 잘못된 방향이거나 이전 처리 중이면 건너뜀
-    if (!isValidLandscape || isProcessing.current || !cameraRef.current) return;
-
-    isProcessing.current = true;
-    const timestamp = Date.now();
+  const handleBackgroundJob = useCallback(async (frame: CapturedFrame) => {
+    const { photo, location, timestamp } = frame;
+    let resizedPath: string | null = null;
 
     try {
-      const photo = await cameraRef.current.takePhoto({ enableShutterSound: false });
+      resizedPath = await prepareFrameForServer(photo.path, photo.width, photo.height);
 
-      console.log(`📷 [${timestamp}] ${photo.width}×${photo.height}`);
+      // Debug: 이미지 로컬 저장
+      await saveImageToDownloads(resizedPath, timestamp);
+      // await sendToServer(resizedPath, timestamp, location);
 
-      const processedUri = await prepareFrameForServer(`file://${photo.path}`, photo.width, photo.height);
-
-      console.log(`✅ [${timestamp}] 서버 전송 준비 완료`);
-      await saveImageToDownloads(processedUri, timestamp);
+      await RNFS.unlink(resizedPath).catch(() => {});
+      resizedPath = null;
     } catch (e) {
-      console.error('프레임 처리 실패 (건너뜀):', e);
     } finally {
-      isProcessing.current = false;
+      await RNFS.unlink(photo.path).catch(() => {});
+      if (resizedPath) await RNFS.unlink(resizedPath).catch(() => {});
+      activeJobs.current -= 1;
     }
-  }, [cameraRef, isValidLandscape]);
+  }, []);
+
+  const processFrame = useCallback(async () => {
+    if (!isValidLandscape || !cameraRef.current) return;
+    if (activePhotos.current >= MAX_CONCURRENT_PHOTOS) return;
+    if (activeJobs.current >= MAX_CONCURRENT_JOBS) return;
+
+    const timestamp = Date.now();
+    const locationSnapshot = currentLocation ? { ...currentLocation } : null;
+
+    activePhotos.current += 1;
+
+    try {
+      const photo = await cameraRef.current.takePhoto({
+        enableShutterSound: false,
+        flash: 'off',
+      });
+
+      if (activeJobs.current < MAX_CONCURRENT_JOBS) {
+        activeJobs.current += 1;
+        handleBackgroundJob({ photo, location: locationSnapshot, timestamp });
+      } else {
+        await RNFS.unlink(photo.path).catch(() => {});
+      }
+    } catch (e) {
+    } finally {
+      activePhotos.current -= 1;
+    }
+  }, [cameraRef, isValidLandscape, currentLocation, handleBackgroundJob]);
 
   const startSampling = useCallback(() => {
-    const id = setInterval(processFrame, SAMPLE_INTERVAL_MS);
-    return () => clearInterval(id);
+    const scheduleNext = () => {
+      timerRef.current = setTimeout(async () => {
+        await processFrame();
+        scheduleNext();
+      }, SAMPLE_INTERVAL_MS);
+    };
+
+    scheduleNext();
+
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
   }, [processFrame]);
 
   return { startSampling };
