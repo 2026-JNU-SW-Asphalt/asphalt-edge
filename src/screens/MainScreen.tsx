@@ -45,6 +45,13 @@ const MainScreen = () => {
 
   const { startSampling } = useCameraEngine(cameraRef as React.RefObject<Camera>, isValidLandscape);
 
+  const [isFocused, setIsFocused] = React.useState(false);
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => setIsFocused(true), 100);
+    return () => clearTimeout(timer);
+  }, []);
+
   useLocationTracker();
 
   const handleInitialized = useCallback(() => {
@@ -135,9 +142,9 @@ const MainScreen = () => {
             ref={cameraRef}
             style={{ flex: 1 }}
             device={device}
-            isActive={true}
             photo={true}
             video={true}
+            isActive={isFocused}
             pixelFormat="yuv"
             format={cameraFormat}
             zoom={zoom}
