@@ -20,10 +20,19 @@ const ensureDir = async (): Promise<void> => {
 /**
  * @param filePath  절대경로 (file:// 없음)
  */
-export const saveImageToDownloads = async (filePath: string, timestamp: number): Promise<void> => {
-  await ensureDir();
-  const ext = filePath.split('.').pop() ?? 'webp';
-  const destPath = `${TARGET_DIR}/frame_${timestamp}.${ext}`;
-  // ✅ RNFS.copyFile은 절대경로 직접 수용
-  await RNFS.copyFile(filePath, destPath);
+export const saveImageToDownloads = async (filePath: string, timestamp: number) => {
+  try {
+    const downloadDir = `${RNFS.DownloadDirectoryPath}/asphalt`;
+
+    if (!(await RNFS.exists(downloadDir))) {
+      await RNFS.mkdir(downloadDir);
+    }
+
+    const destPath = `${downloadDir}/frame_${timestamp}.jpg`; // .webp → .jpg
+    await RNFS.copyFile(filePath, destPath);
+
+    console.log(`📁 저장 완료: ${destPath}`);
+  } catch (error) {
+    console.error('❌ 디버그 이미지 저장 실패:', error);
+  }
 };

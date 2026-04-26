@@ -11,6 +11,7 @@ import { useDeviceOrientation } from '../hooks/useDeviceOrientation';
 
 /* Utils & Components */
 import { requestHardwarePermissions, openAppSettings, checkPermissionStatus } from '../utils/permission';
+import { socketClient } from '../utils/socketClient'; // ✅ 웹소켓 클라이언트 추가
 import { styles } from './MainScreen.styles';
 import { SHAPE } from '../components/DetectButton.style';
 import { OrientationOverlay } from '../components/OrientationOverlay';
@@ -41,7 +42,9 @@ const MainScreen = () => {
 
   const orientation = useDeviceOrientation();
   const isValidLandscape = orientation === VALID_LANDSCAPE;
-  const { isTracking, setIsTracking, currentLocation } = usePotholeStore();
+
+  // ✅ 2. Store에서 isConnected 상태 추가 추출
+  const { isTracking, setIsTracking, currentLocation, isConnected } = usePotholeStore();
 
   const { startSampling } = useCameraEngine(cameraRef as React.RefObject<Camera>, isValidLandscape);
 
@@ -60,7 +63,7 @@ const MainScreen = () => {
     }
   }, [isTracking, isValidLandscape, setIsTracking]);
 
-  // 5. 애니메이션 로직
+  // 3. 버튼 모양 애니메이션 로직
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.spring(anim, {
@@ -79,7 +82,7 @@ const MainScreen = () => {
     outputRange: [SHAPE.circle.radius, SHAPE.square.radius],
   });
 
-  // 6. 생명주기 및 권한 관리
+  // 4. 앱 생명주기 및 권한 관리
   useEffect(() => {
     Orientation.lockToPortrait();
 
@@ -98,12 +101,22 @@ const MainScreen = () => {
     };
   }, []);
 
-  // 샘플링 실행 제어
+  // 5. 샘플링 및 웹소켓 생명주기 통합 관리
   useEffect(() => {
-    if (isTracking) return startSampling();
+    if (isTracking) {
+      // 탐지 시작: 소켓 연결 후 카메라 프레임 샘플링 시작
+      socketClient.connect();
+      const stopSampling = startSampling();
+
+      return () => {
+        // 탐지 종료(또는 컴포넌트 언마운트): 샘플링 중지 후 소켓 닫기
+        stopSampling();
+        socketClient.disconnect();
+      };
+    }
   }, [isTracking, startSampling]);
 
-  // 7. 조건부 렌더링 (권한 확인 중)
+  // 6. 조건부 렌더링 (권한 확인 중)
   if (hasPermission === null) {
     return (
       <View style={styles.centered}>
@@ -113,7 +126,7 @@ const MainScreen = () => {
     );
   }
 
-  // 8. 조건부 렌더링 (권한 거부)
+  // 7. 조건부 렌더링 (권한 거부)
   if (!hasPermission) {
     return (
       <View style={styles.centered}>
@@ -144,7 +157,7 @@ const MainScreen = () => {
             exposure={exposure}
             onInitialized={handleInitialized}
             videoStabilizationMode="off"
-            photoQualityBalance="quality"
+            photoQualityBalance="speed"
           />
         )}
       </View>
@@ -152,7 +165,13 @@ const MainScreen = () => {
       {/* 오버레이 UI 레이어 */}
       {!isValidLandscape && <OrientationOverlay isTracking={isTracking} />}
 
-      <DebugOverlay lat={currentLocation?.lat} lng={currentLocation?.lng} isTracking={isTracking} />
+      {/* ✅ DebugOverlay에 isConnected 상태 전달 */}
+      <DebugOverlay
+        lat={currentLocation?.lat}
+        lng={currentLocation?.lng}
+        isTracking={isTracking}
+        isConnected={isConnected}
+      />
 
       <DetectButton
         isTracking={isTracking}

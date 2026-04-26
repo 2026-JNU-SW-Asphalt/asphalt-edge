@@ -25,10 +25,16 @@ export interface PotholePacket {
  * @description 앱의 전역 상태 인터페이스
  * @property {boolean} isTracking - 현재 포트홀 탐지 및 전송 중인지 여부
  * @property {LocationData} currentLocation - 실시간 GPS 위치 정보
+ * @property {boolean} isConnected - 웹소켓 연결 상태
+ * @property {string | null} sessionId - 탐지 시작 시 발급되는 세션 ID
+ * @property {number} sequence - 프레임 전송 순서 (시퀀스)
  */
 export interface PotholeState {
   isTracking: boolean;
   currentLocation: LocationData;
+  isConnected: boolean;
+  sessionId: string | null;
+  sequence: number;
 }
 
 /**
@@ -38,4 +44,6 @@ export interface PotholeState {
 export interface PotholeActions {
   setIsTracking: (val: boolean) => void;
   setCurrentLocation: (loc: LocationData) => void;
+  setIsConnected: (val: boolean) => void;
+  incrementSequence: () => void;
 }
